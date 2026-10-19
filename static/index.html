@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Qiskit Circuit Mapper</title>
+    <script>
+      if (new URLSearchParams(window.location.search).get("readonly") === "1") {
+        document.documentElement.classList.add("qviz-readonly");
+        document.write("<style>#topbar { display: none !important; }</style>");
+      }
+    </script>
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+  </head>
+  <body>
+    <header class="topbar" id="topbar">
+      <div class="topbar-row">
+      <div class="controls">
+        <label class="field">
+          <span>Backend</span>
+          <select id="backendSelect"></select>
+        </label>
+        <label class="field">
+          <span>Circuit</span>
+          <select id="circuitSelect"></select>
+        </label>
+        <label class="field narrow">
+          <span>Qubits</span>
+          <input id="nInput" type="number" min="2" max="16" value="4" />
+        </label>
+        <label class="field narrow">
+          <span>Seed</span>
+          <input id="seedInput" type="number" min="0" value="11" />
+        </label>
+        <button
+          id="randSeedBtn"
+          class="btn ghost"
+          title="Pick a random seed and recompile"
+        >
+          &#x21BB; Random
+        </button>
+        <label class="field">
+          <span>Layout</span>
+          <select id="layoutSelect">
+            <option value="sabre">sabre</option>
+            <option value="dense">dense</option>
+            <option value="trivial">trivial</option>
+          </select>
+        </label>
+        <button
+          id="qasmBtn"
+          class="btn ghost"
+          title="Paste or upload an OpenQASM circuit"
+        >
+          QASM&hellip;
+        </button>
+      </div>
+      <button id="compileBtn" class="btn primary">Compile &amp; run</button>
+      </div>
+
+      <div class="stats" id="stats"></div>
+    </header>
+
+    <main class="main">
+      <section class="viewport" id="viewport">
+        <div class="view-toolbar">
+          <div class="seg" role="radiogroup" aria-label="Gate level">
+            <button
+              class="seg-btn active"
+              data-level="logical"
+              title="Show gates as written in the circuit (after routing)"
+            >
+              Logical gates
+            </button>
+            <button
+              class="seg-btn"
+              data-level="native"
+              title="Show the backend's native gates (what actually runs)"
+            >
+              Native gates
+            </button>
+          </div>
+          <div class="spacer"></div>
+          <label class="check"
+            ><input type="checkbox" id="showUnused" checked /> idle
+            qubits</label
+          >
+          <button
+            class="btn ghost small"
+            id="menuBtn"
+            title="Hide / show the top menu"
+          >
+            Hide menu
+          </button>
+          <button
+            class="btn ghost small"
+            id="fitBtn"
+            title="Fit the whole chip"
+          >
+            Fit chip
+          </button>
+          <button
+            class="btn ghost small"
+            id="focusBtn"
+            title="Zoom to the qubits in use"
+          >
+            Focus used
+          </button>
+        </div>
+        <svg
+          id="backendSvg"
+          class="backend-svg"
+          role="img"
+          aria-label="Physical backend"
+        ></svg>
+        <div class="legend" id="legend">
+          <button
+            class="legend-title"
+            id="legendToggle"
+            title="Show / hide legend"
+            aria-expanded="true"
+          >
+            <span>Legend</span><span class="chev">&#x25BE;</span>
+          </button>
+          <div class="legend-row">
+            <span class="lg ring"></span> ring colour = logical qubit
+          </div>
+          <div class="legend-row">
+            <span class="lg ramp"></span> fill = P(|1&#x27E9;) 0&rarr;1
+          </div>
+          <div class="legend-row">
+            <span class="lg dashed"></span> not initialised
+          </div>
+          <div class="legend-row">
+            <span class="lg measured">1</span> measured (value)
+          </div>
+          <div class="legend-row" data-lv="logical">
+            <span class="lg chip k-gate">H</span> 1-qubit gate
+          </div>
+          <div class="legend-row" data-lv="logical">
+            <span class="lg chip k-gate2">CX</span> 2-qubit gate
+          </div>
+          <div class="legend-row" data-lv="logical">
+            <span class="lg chip k-swap">SWAP</span> routing swap
+          </div>
+          <div class="legend-row" data-lv="logical">
+            <span class="lg chip k-measure">M</span> measurement
+          </div>
+          <div class="legend-row" data-lv="native">
+            <span class="lg chip k-gate">SX</span> native 1-qubit (rz, sx, x)
+          </div>
+          <div class="legend-row" data-lv="native">
+            <span class="lg chip k-gate2">CZ</span> native 2-qubit (cx / cz /
+            ecr)
+          </div>
+          <div class="legend-row" data-lv="native">
+            <span class="lg chip k-swap">CX</span> part of a routing swap
+          </div>
+          <div class="legend-row" data-lv="native">
+            <span class="lg chip k-measure">M</span> measurement
+          </div>
+        </div>
+        <div class="empty-hint" id="emptyHint">
+          <span id="emptyHintText">Loading available backends and circuits&hellip;</span>
+        </div>
+      </section>
+
+      <aside class="inspector hidden" id="inspector">
+        <div class="inspector-head">
+          <span id="inspectorTitle">Inspector</span>
+          <button class="icon-btn" id="inspectorClose" title="Close">
+            &times;
+          </button>
+        </div>
+        <div class="inspector-body" id="inspectorBody">
+          <p class="muted">
+            Click a qubit to see its value and Bloch sphere. Click a gate to see
+            its Qiskit schema.
+          </p>
+        </div>
+      </aside>
+    </main>
+
+    <section class="circuit-panel hidden" id="circuitPanel">
+      <div class="cp-scroll" id="circuitScroll">
+        <svg
+          id="circuitSvg"
+          class="circuit-svg"
+          role="img"
+          aria-label="Logical circuit"
+        ></svg>
+      </div>
+      <div class="cp-toolbar">
+        <div class="seg" role="radiogroup" aria-label="Circuit mode">
+          <button class="seg-btn" data-cmode="simple">Simple</button>
+          <button class="seg-btn active" data-cmode="track">
+            Track execution
+          </button>
+        </div>
+        <div class="cp-sep"></div>
+        <button class="btn ghost small" id="linkQubitsBtn">
+          Link all qubits
+        </button>
+        <button class="btn ghost small" id="linkGatesBtn">
+          Link all gates
+        </button>
+        <button class="btn ghost small" id="clearLinksBtn">Clear links</button>
+        <span class="muted hint"
+          >Hover to highlight the counterpart &middot; click to link / unlink
+          &middot; shift-click opens details only</span
+        >
+        <div class="spacer"></div>
+        <button class="icon-btn" id="circuitClose" title="Hide circuit">
+          &times;
+        </button>
+      </div>
+    </section>
+
+    <section class="timeline" id="timeline">
+      <div class="tl-controls">
+        <button class="btn icon" id="prevBtn" title="Previous event">
+          &#x23EE;
+        </button>
+        <button class="btn icon primary" id="playBtn" title="Play / pause">
+          &#x25B6;
+        </button>
+        <button class="btn icon" id="nextBtn" title="Next event">
+          &#x23ED;
+        </button>
+        <select id="speedSelect" title="Playback speed">
+          <option value="0.25">0.25&times;</option>
+          <option value="0.5">0.5&times;</option>
+          <option value="1" selected>1&times;</option>
+          <option value="2">2&times;</option>
+          <option value="4">4&times;</option>
+          <option value="8">8&times;</option>
+        </select>
+        <div class="time-readout">
+          <span id="timeNow">0 ns</span><span class="muted"> / </span
+          ><span id="timeTotal">0 ns</span>
+        </div>
+        <div class="event-readout muted" id="eventReadout"></div>
+        <div class="spacer"></div>
+        <button class="btn ghost small" id="circuitBtn">
+          Show logical circuit
+        </button>
+        <button
+          class="btn ghost small"
+          id="timelineBtn"
+          title="Hide / show the timeline chart (controls stay)"
+        >
+          Hide timeline
+        </button>
+      </div>
+      <svg
+        id="timelineSvg"
+        class="timeline-svg"
+        role="img"
+        aria-label="Timeline"
+      ></svg>
+    </section>
+
+    <svg id="linkOverlay" class="link-overlay" aria-hidden="true"></svg>
+    <div id="tooltip" class="tooltip hidden"></div>
+
+    <div class="bloch-pop hidden" id="blochPop">
+      <div
+        class="bloch-pop-card"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Bloch sphere"
+      >
+        <div class="modal-head">
+          <span>Bloch sphere</span
+          ><button class="icon-btn" id="blochPopClose" title="Close">
+            &times;
+          </button>
+        </div>
+        <div class="bloch-pop-body" id="blochPopBody"></div>
+        <div class="bloch-pop-foot muted">
+          Hold and drag to rotate &middot; double-click to reset
+        </div>
+      </div>
+    </div>
+    <div class="modal hidden" id="modal">
+      <div class="modal-card" role="dialog" aria-modal="true">
+        <div class="modal-head">
+          <span id="modalTitle"></span
+          ><button class="icon-btn" id="modalClose">&times;</button>
+        </div>
+        <div class="modal-body" id="modalBody"></div>
+        <div class="modal-foot" id="modalFoot"></div>
+      </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,18 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+htmlcov/
+.coverage
+.coverage.*
+server.log
+.env
+
+# Local editor and operating-system files
+.DS_Store
+Thumbs.db
