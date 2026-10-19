@@ -3,6 +3,8 @@
 QViz is an interactive visualiser that maps a logical quantum circuit onto a
 physical IBM backend and replays its execution over time.
 
+![QViz interactive interface](docs/qviz-interface.png)
+
 ## Requirements
 
 - Python 3.10 or newer
